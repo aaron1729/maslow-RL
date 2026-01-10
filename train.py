@@ -8,6 +8,8 @@ import os
 import logging
 from pathlib import Path
 from typing import Dict, Any
+from datetime import datetime
+import pytz
 
 from dotenv import load_dotenv
 import torch
@@ -370,9 +372,14 @@ def main():
         wandb_project = os.getenv("WANDB_PROJECT", config["experiment"]["wandb_project"])
         wandb_entity = os.getenv("WANDB_ENTITY")
 
+        # Add Pacific timestamp to run name
+        pacific_tz = pytz.timezone('America/Los_Angeles')
+        timestamp = datetime.now(pacific_tz).strftime("%Y-%m-%d, %H:%M")
+        run_name = f"{config['experiment']['name']} {timestamp}"
+
         wandb_kwargs = {
             "project": wandb_project,
-            "name": config["experiment"]["name"],
+            "name": run_name,
             "config": config
         }
         if wandb_entity:
