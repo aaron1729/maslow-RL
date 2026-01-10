@@ -1,0 +1,20 @@
+# Core dependencies
+torch>=2.0.0
+transformers>=4.40.0
+datasets>=2.14.0
+accelerate>=0.27.0
+peft>=0.10.0
+
+# TRL for GRPO
+trl>=0.8.0
+
+# Logging and experiment tracking
+wandb>=0.16.0
+
+# Utilities
+tqdm>=4.65.0
+numpy>=1.24.0
+python-dotenv>=1.0.0
+
+# Development
+pytest>=7.4.0

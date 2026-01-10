@@ -1,0 +1,84 @@
+{
+  "experiment": {
+    "name": "gsm8k-grpo-gated",
+    "run_type": "gated",
+    "seed": 42,
+    "output_dir": "./outputs",
+    "wandb_enabled": true,
+    "wandb_project": "maslow-rl"
+  },
+
+  "model": {
+    "name": "Qwen/Qwen2-0.5B-Instruct",
+    "dtype": "bf16",
+    "device_map": "auto"
+  },
+
+  "lora": {
+    "r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+    "bias": "none",
+    "task_type": "CAUSAL_LM"
+  },
+
+  "data": {
+    "dataset_name": "openai/gsm8k",
+    "dataset_config": "main",
+    "train_size": 500,
+    "eval_size": 100,
+    "sample_seed": 42
+  },
+
+  "training": {
+    "num_train_steps": 500,
+    "per_device_train_batch_size": 8,
+    "per_device_eval_batch_size": 8,
+    "learning_rate": 1e-4,
+    "warmup_steps": 50,
+    "logging_steps": 10,
+    "eval_steps": 100,
+    "save_steps": 250,
+    "gradient_accumulation_steps": 1
+  },
+
+  "grpo": {
+    "num_generations_per_prompt": 8,
+    "max_new_tokens": 256,
+    "temperature": 1.0,
+    "top_p": 0.9,
+    "kl_coef": 0.01
+  },
+
+  "rewards": {
+    "tier_a_weights": {
+      "parsable_json": 0.3,
+      "valid_schema": 0.4,
+      "numeric_answer": 0.2,
+      "json_only": 0.1
+    },
+    "gating": {
+      "k": 3,
+      "tau": 0.5,
+      "beta": 1.0
+    },
+    "tier_c": {
+      "enabled": false,
+      "gamma": 0.1,
+      "judge_fraction": 0.25,
+      "judge_model": "gpt-4"
+    }
+  },
+
+  "prompt": {
+    "system_message": "You must output a JSON object and nothing else. Use keys step_1, step_2, etc. for your reasoning steps, and answer for the final numeric answer.\n\nIMPORTANT: You will be penalized if you do not include at least 2 valid steps. Each step must contain either:\n(1) A reformulation of the word problem into mathematical terms, OR\n(2) A single algebraic manipulation (e.g., \"Subtract 4 from both sides to get x = 7\")\n\nThe validity and quality of your steps matter. Make each step meaningful.\n\nExample:\n{\n  \"step_1\": \"Janet's ducks lay 16 eggs per day. She eats 3 for breakfast and bakes 4 into muffins.\",\n  \"step_2\": \"Eggs remaining: 16 - 3 - 4 = 9 eggs per day\",\n  \"answer\": 9\n}\n\nDo not include any text before or after the JSON.",
+    "user_template": "Problem: {question}"
+  },
+
+  "eval": {
+    "temperature": 0.1,
+    "num_samples_to_save": 20,
+    "eval_at_steps": [0, 250, 500]
+  }
+}

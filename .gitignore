@@ -1,0 +1,57 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Model outputs
+outputs/
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.safetensors
+wandb/
+
+# Evaluation results
+*_eval_results.json
+
+# Lambda Labs
+.lambda_instance.json
+*.log
+
+# macOS
+.DS_Store
+
+# Cache
+.cache/
+__pycache__/
+Qwen/
+
+# Claude Code
+.claude/
+
+# Screenshots and docs
+*.png
+2026-*_chatgpt-instructions.md
