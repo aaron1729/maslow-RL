@@ -277,6 +277,10 @@ def compute_tier_b(completion: str, target_int: int) -> float:
     except json.JSONDecodeError:
         return 0.0
 
+    # Ensure parsed is a dict
+    if not isinstance(parsed, dict):
+        return 0.0
+
     # Get answer field
     if "answer" not in parsed:
         return 0.0
