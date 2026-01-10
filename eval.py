@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Any
+from datetime import datetime
 
 from dotenv import load_dotenv
 import torch
@@ -376,12 +377,15 @@ def main():
 
         plt.tight_layout()
 
-        # Save locally with run ID in filename
-        local_save_path = Path(args.model_path) / f"eval_distributions_{run_id}.png"
-        if not Path(args.model_path).exists():
-            # For HF models, save to current directory
-            local_save_path = Path(f"eval_distributions_{run_id}.png")
+        # Create eval results directory with timestamp and model ID
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        model_id = args.model_path.replace("/", "-").replace("_", "-")
+        eval_dir = Path("eval_results") / f"{model_id}_{timestamp}"
+        eval_dir.mkdir(parents=True, exist_ok=True)
 
+        # Save plots with timestamp and run ID
+        plot_filename = f"eval_distributions_{timestamp}_run-{run_id}.png"
+        local_save_path = eval_dir / plot_filename
         fig.savefig(local_save_path, dpi=150, bbox_inches='tight')
         logger.info(f"Saved distribution plots to {local_save_path}")
 
@@ -440,22 +444,28 @@ def main():
             print(f"{key:25s}: {value}")
     print("=" * 80)
 
-    # Save results
-    output_path = args.output
-    if output_path is None:
-        # For HuggingFace models, save to a simple filename
-        # For local models, save in the model directory
-        model_path_obj = Path(args.model_path)
-        if model_path_obj.exists():
-            output_path = model_path_obj / "eval_results.json"
-        else:
-            # HuggingFace model - save to current directory with sanitized name
-            model_name = args.model_path.replace("/", "_")
-            output_path = Path(f"{model_name}_eval_results.json")
+    # Save results in the same eval directory created during W&B logging
+    # If W&B wasn't enabled, create the directory now
+    if config["experiment"]["wandb_enabled"] and wandb.run is not None:
+        # eval_dir was already created during W&B logging
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        model_id = args.model_path.replace("/", "-").replace("_", "-")
+        eval_dir = Path("eval_results") / f"{model_id}_{timestamp}"
+        run_id = wandb.run.id
     else:
-        output_path = Path(output_path)
+        # Create eval directory without W&B
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        model_id = args.model_path.replace("/", "-").replace("_", "-")
+        eval_dir = Path("eval_results") / f"{model_id}_{timestamp}"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        run_id = "no-wandb"
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Save results JSON
+    if args.output is None:
+        output_path = eval_dir / f"eval_results_{timestamp}_run-{run_id}.json"
+    else:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
     results = {
         "metrics": metrics,
@@ -467,6 +477,46 @@ def main():
         json.dump(results, f, indent=2)
 
     logger.info(f"Saved results to {output_path}")
+
+    # Create README in eval directory
+    readme_path = eval_dir / "README.md"
+    wandb_url = f"https://wandb.ai/kernalabs/maslow-rl/runs/{run_id}" if run_id != "no-wandb" else "N/A"
+
+    readme_content = f"""# Evaluation Results
+
+**Model:** {args.model_path}
+**Timestamp:** {timestamp.replace('_', ' ')} UTC
+**W&B Run:** {wandb_url}
+**Dataset:** GSM8K test set ({metrics['num_samples']} samples)
+
+## Results
+
+- **Accuracy:** {metrics['accuracy']:.1%}
+- **R_A (Structure) Mean:** {metrics['r_a_mean']:.3f} ({metrics['r_a_mean']:.1%})
+- **R_B (Correctness) Mean:** {metrics['r_b_mean']:.3f} ({metrics['r_b_mean']:.1%})
+- **Gate_B Mean:** {metrics['gate_b_mean']:.3f}
+- **Total Reward Mean:** {metrics['reward_total_mean']:.3f}
+- **JSON Parse Rate:** {metrics['json_parse_rate']:.1%}
+- **Valid Schema Rate:** {metrics['valid_schema_rate']:.1%}
+- **R_A Perfect Rate:** {metrics['r_a_perfect_rate']:.1%}
+
+## Interpretation
+
+The model achieved **{metrics['r_a_mean']:.1%} structure quality** (R_A), producing {'valid JSON with proper formatting in nearly all cases' if metrics['r_a_mean'] > 0.95 else 'mostly valid structured outputs'}. Mathematical correctness is at **{metrics['accuracy']:.1%}**, indicating {'strong problem-solving ability' if metrics['accuracy'] > 0.7 else 'room for improvement in accurate reasoning' if metrics['accuracy'] > 0.4 else 'significant challenges with mathematical correctness'}.
+
+The hierarchical gating approach {'successfully taught structure first' if metrics['r_a_mean'] > 0.9 else 'is still developing structural capabilities'}, with the gate {'mostly open' if metrics['gate_b_mean'] > 0.7 else 'partially open'} ({metrics['gate_b_mean']:.3f}) to {'allow' if metrics['gate_b_mean'] > 0.7 else 'begin allowing'} correctness rewards to influence training.
+
+## Files
+
+- `eval_distributions_{timestamp}_run-{run_id}.png` - Histogram plots of reward distributions
+- `eval_results_{timestamp}_run-{run_id}.json` - Full results including all samples and metrics
+- `README.md` - This file
+"""
+
+    with open(readme_path, 'w') as f:
+        f.write(readme_content)
+
+    logger.info(f"Created README at {readme_path}")
 
     # Finish W&B run if enabled
     if config["experiment"]["wandb_enabled"] and wandb.run is not None:
