@@ -39,7 +39,7 @@
     "warmup_steps": 50,
     "logging_steps": 10,
     "eval_steps": 100,
-    "save_steps": 500,
+    "save_steps": 250,
     "gradient_accumulation_steps": 1
   },
 
@@ -79,6 +79,6 @@
   "eval": {
     "temperature": 0.1,
     "num_samples_to_save": 20,
-    "eval_at_steps": [0, 500, 1000]
+    "eval_at_steps": [0, 250, 500, 750, 1000]
   }
 }
