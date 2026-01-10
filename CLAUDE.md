@@ -99,6 +99,42 @@ if isinstance(prompt, list):
     )
 ```
 
+### 7. W&B Sweep Support
+
+Added command-line arguments to enable hyperparameter sweeps:
+```python
+parser.add_argument("--k", type=float, help="Override gating steepness parameter")
+parser.add_argument("--tau", type=float, help="Override gating threshold parameter")
+parser.add_argument("--beta", type=float, help="Override correctness weight parameter")
+```
+
+This allows W&B to control parameters without modifying config files:
+```bash
+python train.py --config config.json --k 5 --tau 0.7 --beta 2.0
+```
+
+**Sweep configuration** (`sweep_gating.yaml`):
+- Method: Random search (12 runs)
+- Parameters: k=[2,3,5,10], tau=[0.3,0.5,0.7], beta=[1.0,2.0]
+- Metric to optimize: `reward/accuracy`
+
+**Parallel execution**:
+- A10 (24GB): 2 agents → ~3-4 hours for 12 runs
+- A100 (40GB): 6 agents → ~1-1.5 hours for 12 runs
+
+### 8. Pacific Timezone Timestamps
+
+W&B run names now include Pacific time timestamps for easier tracking:
+```python
+pacific_tz = pytz.timezone('America/Los_Angeles')
+timestamp = datetime.now(pacific_tz).strftime("%Y-%m-%d, %H:%M")
+run_name = f"{config['experiment']['name']} {timestamp}"
+```
+
+Example: "gsm8k-grpo-gated 2026-01-10, 13:45"
+
+This helps distinguish runs when doing multiple experiments in a day.
+
 ## Architecture Choices
 
 ### Why Qwen2-0.5B?
@@ -122,11 +158,13 @@ if isinstance(prompt, list):
 ## File Organization
 
 ```
-data.py         - Dataset loading, chat template application
-rewards.py      - Tier A/B computation, gating function, validation
-train.py        - GRPO trainer setup, W&B logging, reward_fn
-eval.py         - Model evaluation, W&B histogram logging
-lambda_deploy.py - Lambda Labs instance management
+data.py              - Dataset loading, chat template application
+rewards.py           - Tier A/B computation, gating function, validation
+train.py             - GRPO trainer setup, W&B logging, reward_fn, sweep support
+eval.py              - Model evaluation, W&B histogram logging
+sweep_gating.yaml    - W&B sweep config for hyperparameter search
+config.json          - Gated run configuration
+config_linear.json   - Linear baseline configuration
 ```
 
 ## Workflow
@@ -142,10 +180,22 @@ lambda_deploy.py - Lambda Labs instance management
 3. Activate venv: `source venv/bin/activate`
 4. Run training: `python train.py --config config.json`
 
+### Hyperparameter Sweeps
+1. Initialize sweep: `wandb sweep sweep_gating.yaml` (returns sweep ID)
+2. Launch agents: `wandb agent kernalabs/maslow-rl/<sweep-id>`
+3. For parallel: Run multiple agents in background with nohup
+4. Monitor: https://wandb.ai/kernalabs/maslow-rl/sweeps
+
+**Resource planning**:
+- 1 run ≈ 5.9 GB VRAM (0.5B model with LoRA)
+- A10 (24GB): 2 agents max
+- A100 (40GB): 6 agents max
+
 ### Model Storage
 - **Code**: GitHub (aaron1729/maslow-RL)
 - **Models**: Hugging Face (aaron1729/maslow-rl-gsm8k-gated)
 - **Metrics**: W&B (kernalabs/maslow-rl)
+- **Sweeps**: W&B (kernalabs/maslow-rl/sweeps)
 
 ## Results Analysis
 
@@ -252,6 +302,10 @@ python train.py --config config_test.json
 4. **Use Hugging Face for model storage** - Don't rely on cloud instance persistence
 5. **Temperature matters** - Higher temp for training, lower for eval
 6. **Smaller models iterate faster** - 0.5B was perfect for this experiment
+7. **W&B sweeps accelerate research** - 12 hyperparameter combinations in 1.5 hours with A100
+8. **Parallel agents save time** - 6 agents on A100 → 4x faster than sequential runs
+9. **Command-line overrides beat config editing** - Enables sweeps without code changes
+10. **Timestamp run names** - Pacific time timestamps make it easy to correlate runs with notes
 
 ## References
 

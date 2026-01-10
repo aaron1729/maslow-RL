@@ -192,7 +192,46 @@ Or override run type:
 python train.py --config config.json --run-type linear
 ```
 
-### 3. Evaluate Model
+Override gating parameters:
+```bash
+python train.py --config config.json --k 5 --tau 0.7 --beta 2.0
+```
+
+### 3. Hyperparameter Sweeps
+
+Run a W&B sweep to search for optimal gating parameters (k, tau, beta):
+
+**Initialize sweep**:
+```bash
+wandb sweep sweep_gating.yaml
+# Returns: wandb: Created sweep with ID: abc123
+```
+
+**Launch agents** (can run multiple in parallel):
+```bash
+# Single agent
+wandb agent kernalabs/maslow-rl/<sweep-id>
+
+# Multiple agents in parallel (on GPU with enough VRAM)
+for i in {1..6}; do
+  nohup wandb agent kernalabs/maslow-rl/<sweep-id> > agent_${i}.log 2>&1 &
+done
+```
+
+The sweep config (`sweep_gating.yaml`) uses random search over:
+- **k**: [2, 3, 5, 10] - Gating steepness
+- **tau**: [0.3, 0.5, 0.7] - Gating threshold
+- **beta**: [1.0, 2.0] - Correctness weight
+
+12 runs are sampled randomly from these combinations. Adjust `count: 12` in the YAML to run more experiments.
+
+**Monitor progress**: https://wandb.ai/kernalabs/maslow-rl/sweeps
+
+**GPU Requirements**:
+- A10 (24GB): 2 agents in parallel (~3-4 hours for 12 runs)
+- A100 (40GB): 6 agents in parallel (~1-1.5 hours for 12 runs)
+
+### 4. Evaluate Model
 
 ```bash
 python eval.py \
@@ -242,6 +281,8 @@ Tracked metrics:
 - `accuracy`
 - `json_parse_rate`
 
+W&B runs are automatically named with Pacific timezone timestamps (e.g., "gsm8k-grpo-gated 2026-01-10, 13:45") for easy tracking.
+
 ## Expected Results
 
 ### Gated Run Learning Curve
@@ -270,15 +311,20 @@ The gated run should show:
 maslow-RL/
 ├── config.json              # Gated run config
 ├── config_linear.json       # Linear run config
+├── sweep_gating.yaml        # W&B sweep config for hyperparameter search
 ├── data.py                  # Dataset loading & preprocessing
 ├── rewards.py               # Reward computation (Tier A/B)
 ├── train.py                 # GRPO training script
 ├── eval.py                  # Evaluation script
 ├── requirements.txt         # Python dependencies
 ├── README.md               # This file
+├── CLAUDE.md               # Technical implementation notes
 └── outputs/                # Training outputs (created)
     ├── gsm8k-grpo-gated/
+    │   ├── checkpoint-250/
     │   ├── checkpoint-500/
+    │   ├── checkpoint-750/
+    │   ├── checkpoint-1000/
     │   ├── final_model/
     │   └── config.json
     └── gsm8k-grpo-linear/
