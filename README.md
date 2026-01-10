@@ -2,6 +2,17 @@
 
 This repository implements a reinforcement learning experiment demonstrating that **hierarchically gated rewards** produce better learning dynamics than linear reward combination for training language models on math reasoning tasks.
 
+## Results
+
+**Trained model**: [aaron1729/maslow-rl-gsm8k-gated](https://huggingface.co/aaron1729/maslow-rl-gsm8k-gated) on Hugging Face
+
+**500 training steps:**
+- Structure quality (r_a): **98.6%** - Model mastered JSON output format
+- Test accuracy (r_b): **42-47%** - Correctness improving
+- Successfully validates hierarchical approach: structure learned first, then correctness
+
+**W&B Run**: [View training metrics](https://wandb.ai/kernalabs/maslow-rl/runs/7d9ztg9q)
+
 ## Core Hypothesis
 
 Models learn more efficiently when rewards follow a hierarchy - like Maslow's hierarchy of needs. Lower-tier requirements must be satisfied before higher-tier rewards activate:
@@ -26,11 +37,11 @@ R = R_A + β·σ(k(R_A - τ))·R_B
 ```
 Where:
 - σ(x) = sigmoid function
-- k = 20 (steepness)
-- τ = 0.85 (threshold)
+- k = 3 (steepness)
+- τ = 0.5 (threshold)
 - β = 1.0 (weight)
 
-The sigmoid gate means **R_B only contributes when R_A ≥ 0.85**, forcing the model to master structure before being rewarded for correctness.
+The sigmoid gate means **R_B contributes more as R_A increases**, forcing the model to improve structure before correctness rewards dominate.
 
 ### Expected Outcome
 
@@ -69,12 +80,12 @@ Example valid output:
 
 ```python
 gate_b = sigmoid(k * (R_A - tau))
-       = 1 / (1 + exp(-20 * (R_A - 0.85)))
+       = 1 / (1 + exp(-3 * (R_A - 0.5)))
 ```
 
-When R_A = 0.85, gate_b = 0.5 (half contribution)
-When R_A = 1.0, gate_b ≈ 0.95 (nearly full contribution)
-When R_A = 0.70, gate_b ≈ 0.05 (minimal contribution)
+When R_A = 0.5, gate_b = 0.5 (half contribution)
+When R_A = 1.0, gate_b ≈ 0.82 (high contribution)
+When R_A = 0.0, gate_b ≈ 0.18 (low contribution)
 
 ## Installation
 
@@ -140,8 +151,8 @@ All hyperparameters are in JSON config files:
 {
   "rewards": {
     "gating": {
-      "k": 20,
-      "tau": 0.85,
+      "k": 3,
+      "tau": 0.5,
       "beta": 1.0
     }
   }
