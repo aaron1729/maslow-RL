@@ -14,6 +14,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from tqdm import tqdm
 import wandb
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for server use
+import matplotlib.pyplot as plt
 
 from data import load_data_from_config
 from rewards import batch_compute_rewards
@@ -311,21 +314,14 @@ def main():
 
     # Log to W&B if enabled
     if config["experiment"]["wandb_enabled"] and wandb.run is not None:
-        # Extract distributions from samples for histogram logging
+        # Extract distributions from samples
         r_a_values = [s["info"]["r_a"] for s in samples]
         r_b_values = [s["info"]["r_b"] for s in samples]
         gate_b_values = [s["info"]["gate_b"] for s in samples]
         reward_values = [s["reward"] for s in samples]
 
-        # Extract tier A component distributions
-        parsable_json_values = [s["info"]["tier_a_components"]["parsable_json"] for s in samples]
-        valid_schema_values = [s["info"]["tier_a_components"]["valid_schema"] for s in samples]
-        numeric_answer_values = [s["info"]["tier_a_components"]["numeric_answer"] for s in samples]
-        json_only_values = [s["info"]["tier_a_components"]["json_only"] for s in samples]
-
-        # Log aggregate metrics AND histograms
-        wandb.log({
-            # Summary statistics
+        # 1. Log scalar metrics to summary (not as time-series)
+        wandb.summary.update({
             "eval/accuracy": metrics["accuracy"],
             "eval/r_a_mean": metrics["r_a_mean"],
             "eval/r_b_mean": metrics["r_b_mean"],
@@ -334,21 +330,66 @@ def main():
             "eval/json_parse_rate": metrics["json_parse_rate"],
             "eval/valid_schema_rate": metrics["valid_schema_rate"],
             "eval/r_a_perfect_rate": metrics["r_a_perfect_rate"],
-
-            # Histograms using wandb.plot for better visualization
-            "eval/r_a_histogram": wandb.plot.histogram(
-                wandb.Table(data=[[v] for v in r_a_values], columns=["r_a"]), "r_a", title="R_A Distribution"
-            ),
-            "eval/r_b_histogram": wandb.plot.histogram(
-                wandb.Table(data=[[v] for v in r_b_values], columns=["r_b"]), "r_b", title="R_B (Correctness) Distribution"
-            ),
-            "eval/gate_b_histogram": wandb.plot.histogram(
-                wandb.Table(data=[[v] for v in gate_b_values], columns=["gate_b"]), "gate_b", title="Gate_B Distribution"
-            ),
-            "eval/reward_histogram": wandb.plot.histogram(
-                wandb.Table(data=[[v] for v in reward_values], columns=["reward"]), "reward", title="Total Reward Distribution"
-            ),
+            "eval/num_samples": metrics["num_samples"],
         })
+
+        # 2. Create matplotlib histograms with proper binning
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+        # Add run ID to title
+        run_id = wandb.run.id
+        run_name = wandb.run.name
+        fig.suptitle(f'Evaluation Distributions\nRun: {run_name} (ID: {run_id})', fontsize=14)
+
+        # R_A histogram (fine bins from 0 to 1)
+        axes[0, 0].hist(r_a_values, bins=20, range=(0, 1), color='skyblue', edgecolor='black')
+        axes[0, 0].set_title('R_A (Structure) Distribution')
+        axes[0, 0].set_xlabel('R_A')
+        axes[0, 0].set_ylabel('Count')
+        axes[0, 0].axvline(metrics["r_a_mean"], color='red', linestyle='--', label=f'Mean: {metrics["r_a_mean"]:.3f}')
+        axes[0, 0].legend()
+
+        # R_B histogram (binary: 0 or 1)
+        axes[0, 1].hist(r_b_values, bins=[-0.5, 0.5, 1.5], color='lightcoral', edgecolor='black')
+        axes[0, 1].set_title('R_B (Correctness) Distribution')
+        axes[0, 1].set_xlabel('R_B')
+        axes[0, 1].set_ylabel('Count')
+        axes[0, 1].set_xticks([0, 1])
+        axes[0, 1].axvline(metrics["r_b_mean"], color='red', linestyle='--', label=f'Accuracy: {metrics["r_b_mean"]:.3f}')
+        axes[0, 1].legend()
+
+        # Gate_B histogram (fine bins from 0 to 1)
+        axes[1, 0].hist(gate_b_values, bins=20, range=(0, 1), color='lightgreen', edgecolor='black')
+        axes[1, 0].set_title('Gate_B Distribution')
+        axes[1, 0].set_xlabel('Gate_B')
+        axes[1, 0].set_ylabel('Count')
+        axes[1, 0].axvline(metrics["gate_b_mean"], color='red', linestyle='--', label=f'Mean: {metrics["gate_b_mean"]:.3f}')
+        axes[1, 0].legend()
+
+        # Total Reward histogram
+        axes[1, 1].hist(reward_values, bins=20, color='plum', edgecolor='black')
+        axes[1, 1].set_title('Total Reward Distribution')
+        axes[1, 1].set_xlabel('Total Reward')
+        axes[1, 1].set_ylabel('Count')
+        axes[1, 1].axvline(metrics["reward_total_mean"], color='red', linestyle='--', label=f'Mean: {metrics["reward_total_mean"]:.3f}')
+        axes[1, 1].legend()
+
+        plt.tight_layout()
+
+        # Save locally with run ID in filename
+        local_save_path = Path(args.model_path) / f"eval_distributions_{run_id}.png"
+        if not Path(args.model_path).exists():
+            # For HF models, save to current directory
+            local_save_path = Path(f"eval_distributions_{run_id}.png")
+
+        fig.savefig(local_save_path, dpi=150, bbox_inches='tight')
+        logger.info(f"Saved distribution plots to {local_save_path}")
+
+        # Log as image to W&B
+        wandb.log({"eval/distributions": wandb.Image(fig)})
+        plt.close(fig)
+
+        logger.info("Logged evaluation distributions to W&B")
 
         # Create a table for sample completions
         sample_table = wandb.Table(
