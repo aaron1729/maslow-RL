@@ -353,6 +353,21 @@ def main():
         choices=["linear", "gated"],
         help="Override run type from config"
     )
+    parser.add_argument(
+        "--k",
+        type=float,
+        help="Override gating steepness parameter (k)"
+    )
+    parser.add_argument(
+        "--tau",
+        type=float,
+        help="Override gating threshold parameter (tau)"
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        help="Override correctness weight parameter (beta)"
+    )
     args = parser.parse_args()
 
     # Load config
@@ -362,6 +377,17 @@ def main():
     if args.run_type:
         config["experiment"]["run_type"] = args.run_type
         logger.info(f"Overriding run_type to: {args.run_type}")
+
+    # Override sweep parameters if specified
+    if args.k is not None:
+        config["rewards"]["gating"]["k"] = args.k
+        logger.info(f"Overriding k to: {args.k}")
+    if args.tau is not None:
+        config["rewards"]["gating"]["tau"] = args.tau
+        logger.info(f"Overriding tau to: {args.tau}")
+    if args.beta is not None:
+        config["rewards"]["gating"]["beta"] = args.beta
+        logger.info(f"Overriding beta to: {args.beta}")
 
     # Set seed
     set_seed(config["experiment"]["seed"])
