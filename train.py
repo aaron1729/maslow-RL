@@ -139,13 +139,14 @@ def create_reward_function(config: Dict):
         'batch_size': batch_size
     }
 
-    def reward_fn(completions, target_int=None, **kwargs):
+    def reward_fn(completions, target_int=None, question=None, **kwargs):
         """
         Reward function called by GRPOTrainer.
 
         Args:
             completions: List of generated completion strings
             target_int: List of target integers from dataset
+            question: List of original question strings from dataset
             **kwargs: Other fields from dataset (unused)
 
         Returns:
@@ -173,6 +174,15 @@ def create_reward_function(config: Dict):
         else:
             # Single value, replicate for all completions
             target_ints = [target_int] * len(completions)
+
+        # Ensure question is a list with same length as completions
+        if question is None:
+            questions = [""] * len(completions)
+        elif isinstance(question, list):
+            questions = question
+        else:
+            # Single value, replicate for all completions
+            questions = [question] * len(completions)
 
         rewards, infos = batch_compute_rewards(
             completion_texts, target_ints, run_type, config
@@ -247,8 +257,9 @@ def create_reward_function(config: Dict):
                             "tau": config["rewards"]["gating"]["tau"],
                             "beta": config["rewards"]["gating"]["beta"],
                             "step": reward_fn.call_count,
-                            "completion": completion_texts[i],
+                            "question": questions[i],
                             "target": target_ints[i],
+                            "completion": completion_texts[i],
                             "r_a": round(infos[i]["r_a"], 1),  # Multiples of 0.1
                             "r_b": round(infos[i]["r_b"], 1),  # Binary (0 or 1)
                             "gate_b": round(infos[i]["gate_b"], 4),  # Continuous sigmoid
