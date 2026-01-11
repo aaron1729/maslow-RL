@@ -232,7 +232,7 @@ def create_reward_function(config: Dict):
 
         # Log sample completions to local file every 10 calls
         if reward_fn.call_count % 10 == 0:
-            output_dir = Path(config["experiment"]["output_dir"]) / config["experiment"]["name"]
+            # Use output_dir from outer scope (already has run ID and timestamp)
             completions_file = output_dir / "sample_completions.jsonl"
             try:
                 import json
@@ -285,8 +285,12 @@ def setup_training(config: Dict, model, tokenizer, train_dataset, eval_dataset):
     grpo_config = config["grpo"]
     experiment_config = config["experiment"]
 
-    # Setup output directory
-    output_dir = Path(experiment_config["output_dir"]) / experiment_config["name"]
+    # Setup output directory (append run ID and timestamp for uniqueness in sweeps)
+    base_name = experiment_config["name"]
+    if wandb.run is not None:
+        timestamp = datetime.now(pytz.timezone('America/Los_Angeles')).strftime("%Y%m%d-%H%M%S")
+        base_name = f"{base_name}-{wandb.run.id}-{timestamp}"
+    output_dir = Path(experiment_config["output_dir"]) / base_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Create GRPO config
@@ -434,8 +438,12 @@ def main():
     logger.info("Starting training...")
     trainer.train()
 
-    # Save final model
-    output_dir = Path(config["experiment"]["output_dir"]) / config["experiment"]["name"]
+    # Save final model (use same directory logic as create_trainer)
+    base_name = config["experiment"]["name"]
+    if wandb.run is not None:
+        timestamp = datetime.now(pytz.timezone('America/Los_Angeles')).strftime("%Y%m%d-%H%M%S")
+        base_name = f"{base_name}-{wandb.run.id}-{timestamp}"
+    output_dir = Path(config["experiment"]["output_dir"]) / base_name
     final_path = output_dir / "final_model"
     trainer.save_model(str(final_path))
     logger.info(f"Saved final model to {final_path}")
