@@ -6,12 +6,17 @@ This repository implements a reinforcement learning experiment demonstrating tha
 
 **Trained model**: [aaron1729/maslow-rl-gsm8k-gated](https://huggingface.co/aaron1729/maslow-rl-gsm8k-gated) on Hugging Face
 
-**500 training steps:**
+**Available checkpoint**: k=5, tau=0.3, beta=2 (1000 training steps)
 - Structure quality (r_a): **98.6%** - Model mastered JSON output format
-- Test accuracy (r_b): **42-47%** - Correctness improving
-- Successfully validates hierarchical approach: structure learned first, then correctness
+- Test accuracy (r_b): **37%** - Shows correctness learning
+- Checkpoints at steps 250, 500, 750, 1000 for training analysis
 
-**W&B Run**: [View training metrics](https://wandb.ai/kernalabs/maslow-rl/runs/7d9ztg9q)
+**1000 training steps:**
+- Successfully validates hierarchical approach: structure learned first, then correctness
+- Smooth learning curve with r_a reaching plateau early
+- Correctness (r_b) improves gradually after gating opens
+
+**W&B Project**: [View all runs](https://wandb.ai/kernalabs/maslow-rl)
 
 ## Core Hypothesis
 
@@ -233,17 +238,36 @@ The sweep config (`sweep_gating.yaml`) uses random search over:
 
 ### 4. Evaluate Model
 
+**Evaluate local checkpoint**:
 ```bash
 python eval.py \
   --config config.json \
-  --model-path ./outputs/gsm8k-grpo-gated/final_model \
+  --model-path ./outputs/gsm8k-grpo-gated-abc123-20260110-153045/final_model \
   --base-model Qwen/Qwen2.5-0.5B-Instruct \
   --num-samples 100
 ```
 
-Results saved to `eval_results.json` with:
-- Aggregate metrics (accuracy, R_A, R_B, etc.)
-- Sample outputs for inspection
+**Evaluate from HuggingFace**:
+```bash
+python eval.py \
+  --config config.json \
+  --model-path aaron1729/maslow-rl-gsm8k-gated/k=5_tau=0.3_beta=2/final_model \
+  --base-model Qwen/Qwen2.5-0.5B-Instruct \
+  --num-samples 100
+```
+
+**Evaluate specific checkpoint** (e.g., step 500):
+```bash
+python eval.py \
+  --config config.json \
+  --model-path aaron1729/maslow-rl-gsm8k-gated/k=5_tau=0.3_beta=2/checkpoint-500 \
+  --base-model Qwen/Qwen2.5-0.5B-Instruct \
+  --num-samples 100
+```
+
+Results automatically saved to timestamped directory:
+- `eval_results/{model-id}_{timestamp}/`
+- Includes: metrics, histograms, sample outputs, README
 
 ## Monitoring Training
 
@@ -309,27 +333,31 @@ The gated run should show:
 
 ```
 maslow-RL/
-├── config.json              # Gated run config
-├── config_linear.json       # Linear run config
-├── sweep_gating.yaml        # W&B sweep config for hyperparameter search
-├── data.py                  # Dataset loading & preprocessing
-├── rewards.py               # Reward computation (Tier A/B)
-├── train.py                 # GRPO training script
-├── eval.py                  # Evaluation script
-├── requirements.txt         # Python dependencies
-├── README.md               # This file
-├── CLAUDE.md               # Technical implementation notes
-└── outputs/                # Training outputs (created)
-    ├── gsm8k-grpo-gated/
+├── config.json                      # Gated run config
+├── config_linear.json               # Linear run config
+├── sweep_gating.yaml                # W&B sweep config for hyperparameter search
+├── data.py                          # Dataset loading & preprocessing
+├── rewards.py                       # Reward computation (Tier A/B)
+├── train.py                         # GRPO training script
+├── eval.py                          # Evaluation script
+├── requirements.txt                 # Python dependencies
+├── README.md                        # This file
+├── CLAUDE.md                        # Technical implementation notes
+├── sample_completions_MIXED_RUNS_2026-01-10.jsonl  # Training data from sweep
+└── outputs/                         # Training outputs (created)
+    ├── gsm8k-grpo-gated-abc123-20260110-153045/  # Unique per run
     │   ├── checkpoint-250/
     │   ├── checkpoint-500/
     │   ├── checkpoint-750/
     │   ├── checkpoint-1000/
     │   ├── final_model/
+    │   ├── sample_completions.jsonl # With full metadata
     │   └── config.json
-    └── gsm8k-grpo-linear/
+    └── gsm8k-grpo-linear-xyz789-20260110-160012/
         └── ...
 ```
+
+**Note**: Output directories now include W&B run ID and Pacific timestamp to prevent overwriting during sweeps.
 
 ## Budget & Compute
 
@@ -364,6 +392,15 @@ Example providers:
 - Update TRL: `pip install --upgrade trl`
 - Check TRL version: `python -c "import trl; print(trl.__version__)"`
 - Required: trl >= 0.8.0
+
+**Sweep agents not stopping?**
+- W&B agents don't auto-terminate when `count` is reached
+- Monitor sweep progress and manually kill agents:
+  ```bash
+  pkill -f "wandb agent"
+  ```
+- Or mark sweep as finished in W&B UI
+- Agents will continue sampling (potentially duplicates) until stopped
 
 ## Citation
 

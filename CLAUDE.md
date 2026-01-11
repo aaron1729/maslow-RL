@@ -248,16 +248,86 @@ config_linear.json   - Linear baseline configuration
 3. **Transfer to other domains**: Code, planning, scientific reasoning
 4. **Theoretical analysis**: Prove convergence properties of gated rewards
 
-## Known Issues
+## Critical Bugs Fixed (2026-01-10)
 
-### W&B Histogram Display
+### 1. Model Overwriting in Sweeps
+
+**Problem**: All sweep runs saved to the same output directory (`outputs/gsm8k-grpo-gated/`), causing each run to overwrite previous models. Lost 17 of 18 trained models from initial hyperparameter sweep.
+
+**Root Cause**: Output directory was based only on `experiment.name` from config, not unique per run.
+
+**Fix**: Append W&B run ID and Pacific timestamp to output directory:
+```python
+base_name = experiment_config["name"]
+if wandb.run is not None:
+    timestamp = datetime.now(pytz.timezone('America/Los_Angeles')).strftime("%Y%m%d-%H%M%S")
+    base_name = f"{base_name}-{wandb.run.id}-{timestamp}"
+output_dir = Path(experiment_config["output_dir"]) / base_name
+```
+
+Example: `outputs/gsm8k-grpo-gated-abc123-20260110-153045/`
+
+### 2. Sample Completions Missing Metadata
+
+**Problem**: Sample completions logged without run identification or hyperparameters. 2736 completions from 18 runs were mixed together with no way to separate them.
+
+**Fix**: Added metadata to each log entry:
+```python
+log_entry = {
+    "wandb_run_id": wandb.run.id,
+    "wandb_run_name": wandb.run.name,
+    "run_type": run_type,  # "gated" or "linear"
+    "k": config["rewards"]["gating"]["k"],
+    "tau": config["rewards"]["gating"]["tau"],
+    "beta": config["rewards"]["gating"]["beta"],
+    "step": reward_fn.call_count,
+    "question": questions[i],  # Original GSM8K question
+    "target": target_ints[i],
+    "completion": completion_texts[i],
+    "r_a": round(infos[i]["r_a"], 1),
+    "r_b": round(infos[i]["r_b"], 1),
+    "gate_b": round(infos[i]["gate_b"], 4),
+    "reward": round(rewards[i], 4)
+}
+```
+
+Now each completion includes:
+- Run identification (ID, name)
+- Hyperparameters (k, tau, beta)
+- Original question text (for validation)
+- Properly rounded floats (no more 0.9999999999999999)
+
+### 3. W&B Sweep Infinite Loops
+
+**Problem**: W&B sweeps with `count: 12` and multiple agents don't auto-stop. Agents keep polling for work after 12 runs complete, leading to duplicate configs.
+
+**Symptoms**:
+- 18 runs completed instead of 12
+- 2 duplicate configurations (k=2, tau=0.7, beta=2 and k=5, tau=0.3, beta=2 ran twice)
+- Random sampling can hit the same config multiple times
+
+**Solution**: Manually kill agents when desired run count is reached:
+```bash
+pkill -f "wandb agent"
+```
+
+Or monitor sweep and mark as finished in W&B UI when count is reached.
+
+### 4. W&B Histogram Display
 Tried multiple approaches to log distributions:
 - `wandb.Histogram()` - Rendered as constant functions
-- `wandb.plot.histogram()` - Still not displaying correctly
+- `wandb.plot.histogram()` - Created 1-2 giant bins hiding all variation
 
-**Workaround**: All eval data saved to `eval_results.json` with full per-sample breakdowns. Can plot distributions locally with matplotlib.
+**Solution**: Use matplotlib to generate histograms, upload as images:
+```python
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+# ... create histograms with proper bins ...
+wandb.log({"eval/distributions": wandb.Image(fig)})
+```
 
-### Lambda Labs Instance Persistence
+Also save to local file for offline analysis.
+
+### 5. Lambda Labs Instance Persistence
 - No "pause" option - only terminate or keep running
 - Terminating destroys local storage
 - Must use Hugging Face Hub for model persistence
@@ -294,6 +364,23 @@ python rewards.py
 python train.py --config config_test.json
 ```
 
+## Rescued Model
+
+After the sweep overwriting disaster, one complete model survived:
+
+**HuggingFace**: `aaron1729/maslow-rl-gsm8k-gated`
+- **Config**: k=5, tau=0.3, beta=2
+- **Checkpoints**: 250, 500, 750, 1000 steps + final_model
+- **Directory structure**: `k=5_tau=0.3_beta=2/checkpoint-{250,500,750,1000,final_model}/`
+
+This model represents 1 of the 18 sweep runs. The other 17 configurations were lost to overwriting.
+
+**Rescued data**:
+- `sample_completions_MIXED_RUNS_2026-01-10.jsonl` - 2736 completions from all 18 runs
+  - Cannot separate by hyperparameters (logged before metadata fix)
+  - Useful for aggregate analysis of learning trajectory
+  - Shows progression from step 10 to step 1000
+
 ## Lessons Learned
 
 1. **Start with low k for gating** - Steep sigmoids create hard thresholds that hurt learning
@@ -306,6 +393,11 @@ python train.py --config config_test.json
 8. **Parallel agents save time** - 6 agents on A100 → 4x faster than sequential runs
 9. **Command-line overrides beat config editing** - Enables sweeps without code changes
 10. **Timestamp run names** - Pacific time timestamps make it easy to correlate runs with notes
+11. **CRITICAL: Unique output directories for sweeps** - Include run ID and timestamp in paths
+12. **Log metadata with everything** - Run IDs, hyperparameters, original questions
+13. **Monitor sweeps actively** - W&B agents don't auto-stop at count limit
+14. **Test with small runs first** - Catch bugs before committing to long sweeps
+15. **Checkpoint early and often** - Cloud instances can fail unexpectedly
 
 ## References
 
