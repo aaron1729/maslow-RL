@@ -249,10 +249,10 @@ def create_reward_function(config: Dict):
                             "step": reward_fn.call_count,
                             "completion": completion_texts[i],
                             "target": target_ints[i],
-                            "r_a": infos[i]["r_a"],
-                            "r_b": infos[i]["r_b"],
-                            "gate_b": infos[i]["gate_b"],
-                            "reward": rewards[i]
+                            "r_a": round(infos[i]["r_a"], 6),
+                            "r_b": round(infos[i]["r_b"], 6),
+                            "gate_b": round(infos[i]["gate_b"], 6),
+                            "reward": round(rewards[i], 6)
                         }
                         f.write(json.dumps(log_entry) + "\n")
             except Exception as e:
