@@ -240,6 +240,12 @@ def create_reward_function(config: Dict):
                     # Log first 2 completions from this batch
                     for i in range(min(2, len(completion_texts))):
                         log_entry = {
+                            "wandb_run_id": wandb.run.id if wandb.run else None,
+                            "wandb_run_name": wandb.run.name if wandb.run else None,
+                            "run_type": run_type,
+                            "k": config["rewards"]["gating"]["k"],
+                            "tau": config["rewards"]["gating"]["tau"],
+                            "beta": config["rewards"]["gating"]["beta"],
                             "step": reward_fn.call_count,
                             "completion": completion_texts[i],
                             "target": target_ints[i],
